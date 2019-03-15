@@ -38,7 +38,33 @@ import akka.annotation.InternalApi
 /**
  * INTERNAL API
  */
-@InternalApi private[typed] class ActorAdapter[T](_initialBehavior: Behavior[T])
+@InternalApi
+private[typed] object OptmizedActorAdapter {
+  val DummyReceive: untyped.Actor.Receive = {
+    case _ => throw new RuntimeException("receive should never be called on the OptimizedActorAdapter")
+  }
+}
+
+/**
+ * INTERNAL API
+ */
+@InternalApi
+private[typed] final class OptimizedActorAdapter[T](_initialBehavior: Behavior[T])
+    extends ActorAdapter[T](_initialBehavior) {
+
+  override def receive: Receive = OptmizedActorAdapter.DummyReceive
+  override protected[akka] def aroundReceive(receive: Receive, msg: Any): Unit = {
+    // as we know we never become in "normal" typed actors, it is just the current behavior that
+    // changes, we can avoid some overhead with the partial function/behavior stack of untyped enitirely
+    // we also know that the receive is total, so we can avoid the orElse part as well.
+    receiveMessage(msg)
+  }
+}
+
+/**
+ * INTERNAL API
+ */
+@InternalApi private[typed] abstract class ActorAdapter[T](_initialBehavior: Behavior[T])
     extends untyped.Actor
     with untyped.ActorLogging {
   import Behavior._
@@ -57,9 +83,7 @@ import akka.annotation.InternalApi
    */
   private var failures: Map[untyped.ActorRef, Throwable] = Map.empty
 
-  def receive: Receive = running
-
-  def running: Receive = {
+  protected final def receiveMessage(msg: Any): Unit = msg match {
     case untyped.Terminated(ref) =>
       val msg =
         if (failures contains ref) {
@@ -202,7 +226,6 @@ import akka.annotation.InternalApi
       start()
 
   protected def start(): Unit = {
-    context.become(running)
     initializeContext()
     behavior = validateAsInitial(Behavior.start(behavior, ctx))
     if (!isAlive(behavior)) context.stop(self)
@@ -245,17 +268,21 @@ import akka.annotation.InternalApi
 private[typed] class GuardianActorAdapter[T](_initialBehavior: Behavior[T]) extends ActorAdapter[T](_initialBehavior) {
   import Behavior._
 
+  def receive: Receive = waitingForStart(Nil)
+
   override def preStart(): Unit =
     if (!isAlive(behavior))
       context.stop(self)
-    else
-      context.become(waitingForStart(Nil))
 
   def waitingForStart(stashed: List[Any]): Receive = {
     case GuardianActorAdapter.Start =>
       start()
-
-      stashed.reverse.foreach(receive)
+      if (Behavior.isAlive(behavior)) {
+        context.become {
+          case msg => receiveMessage(msg)
+        }
+        stashed.reverse.foreach(receive)
+      }
     case other =>
       // unlikely to happen but not impossible
       context.become(waitingForStart(other :: stashed))
