@@ -41,8 +41,8 @@ import scala.annotation.switch
  * INTERNAL API
  */
 @InternalApi
-private[typed] object OptmizedActorAdapter {
-  val DummyReceive: untyped.Actor.Receive = {
+private[typed] object OptimizedActorAdapter {
+  private val DummyReceive: untyped.Actor.Receive = {
     case _ => throw new RuntimeException("receive should never be called on the OptimizedActorAdapter")
   }
 }
@@ -54,7 +54,7 @@ private[typed] object OptmizedActorAdapter {
 private[typed] final class OptimizedActorAdapter[T](_initialBehavior: Behavior[T])
     extends ActorAdapter[T](_initialBehavior) {
 
-  override def receive: Receive = OptmizedActorAdapter.DummyReceive
+  override def receive: Receive = OptimizedActorAdapter.DummyReceive
   override protected[akka] def aroundReceive(receive: Receive, msg: Any): Unit = {
     // as we know we never become in "normal" typed actors, it is just the current behavior that
     // changes, we can avoid some overhead with the partial function/behavior stack of untyped entirely
