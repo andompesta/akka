@@ -55,7 +55,7 @@ private[typed] final class OptimizedActorAdapter[T](_initialBehavior: Behavior[T
   override def receive: Receive = OptmizedActorAdapter.DummyReceive
   override protected[akka] def aroundReceive(receive: Receive, msg: Any): Unit = {
     // as we know we never become in "normal" typed actors, it is just the current behavior that
-    // changes, we can avoid some overhead with the partial function/behavior stack of untyped enitirely
+    // changes, we can avoid some overhead with the partial function/behavior stack of untyped entirely
     // we also know that the receive is total, so we can avoid the orElse part as well.
     receiveMessage(msg)
   }
@@ -103,6 +103,8 @@ private[typed] final class OptimizedActorAdapter[T](_initialBehavior: Behavior[T
       }
     case AdaptWithRegisteredMessageAdapter(msg) =>
       adaptAndHandle(msg)
+    case signal: Signal =>
+      handleSignal(signal)
     case msg: T @unchecked =>
       handleMessage(msg)
   }
