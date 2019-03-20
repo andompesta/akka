@@ -284,7 +284,7 @@ private[typed] class GuardianActorAdapter[T](_initialBehavior: Behavior[T]) exte
         context.become {
           case msg => receiveMessage(msg)
         }
-        stashed.reverse.foreach(receive)
+        stashed.reverse.foreach(receiveMessage)
       }
     case other =>
       // unlikely to happen but not impossible
